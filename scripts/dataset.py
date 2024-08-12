@@ -57,7 +57,7 @@ def save_data(df, filename, directory):
     df.to_csv(os.path.join(directory, filename), index=False)
 
 if __name__ == "__main__":
-    github_url = 'https://raw.githubusercontent.com/Bal67/NewMovieColorClassification/main/data/MovieGenre.csv'
+    github_url = 'https://github.com/Bal67/NewMovieColorClassification/main/data/MovieGenre.csv'
     save_directory = '/content/drive/MyDrive/MovieColorClassification/NewMovieColorClassification/images'  # Specify the Google Drive folder for images
     data_save_directory = '/content/drive/MyDrive/MovieColorClassification/NewMovieColorClassification/data'  # Specify the Google Drive folder for data
 
