@@ -3,16 +3,14 @@ import os
 import requests
 from PIL import Image
 from io import BytesIO
-import boto3
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 def load_data_from_github(url):
     return pd.read_csv(url)
 
 def preprocess_data(df):
-        # Drop rows with missing 'Imdb Link'
+    # Drop rows with missing 'Poster' URLs
     df = df.dropna(subset=['Poster'])
-    # Drop the specified columns
     columns_to_drop = ['imdbld', 'Imdb Link', 'Title', 'IMDB Score']
     df = df.drop(columns=columns_to_drop, errors='ignore')
     return df
@@ -23,31 +21,28 @@ def download_image(url):
         img = Image.open(BytesIO(response.content))
         return img
     except Exception as e:
+        print(f"Error downloading image from {url}: {e}")
         return None
 
-def upload_to_s3(img, bucket, key):
-    buffer = BytesIO()
-    img.save(buffer, 'JPEG')
-    buffer.seek(0)
-    s3_client.upload_fileobj(buffer, bucket, key)
+def save_image_locally(img, directory, filename):
+    os.makedirs(directory, exist_ok=True)
+    img_path = os.path.join(directory, filename)
+    img.save(img_path, 'JPEG')
 
-
-def download_and_upload_image(row, bucket):
+def download_and_save_image(row, directory):
     img = download_image(row['Poster'])
     if img:
-        key = f"images/{row['md5hash']}.jpg"
-        upload_to_s3(img, bucket, key)
+        # Create a unique filename using the 'md5hash' or another unique identifier
+        filename = f"{row['md5hash']}.jpg"
+        save_image_locally(img, directory, filename)
         return True
     return False
 
-def filter_rows_with_unavailable_images(df, bucket):
+def filter_rows_with_unavailable_images(df, directory):
     available_rows = []
 
     def check_image_availability(row):
-        img = download_image(row['Poster'])
-        if img:
-            key = f"images/{row['md5hash']}.jpg"
-            upload_to_s3(img, bucket, key)
+        if download_and_save_image(row, directory):
             available_rows.append(row)
 
     with ThreadPoolExecutor(max_workers=10) as executor:
@@ -62,24 +57,18 @@ def save_data(df, filename, directory):
     df.to_csv(os.path.join(directory, filename), index=False)
 
 if __name__ == "__main__":
-    github_url = 'https://github.com/Bal67/NewMovieColorClassificaiton/blob/dataset/data/MovieGenre.csv'
-    s3_bucket = 'moviecolorbucket'
+    github_url = 'https://github.com/Bal67/NewMovieColorClassification/blob/main/data/MovieGenre.csv'
+    save_directory = '/content/drive/MyDrive/MovieColorClassification/NewMovieColorClassification/images'  # Specify the Google Drive folder for images
+    data_save_directory = '/content/drive/MyDrive/MovieColorClassification/NewMovieColorClassification/data'  # Specify the Google Drive folder for data
 
-    # Get AWS credentials from environment variables
-    AWS_ACCESS_KEY_ID = os.getenv('AWS_ACCESS_KEY_ID')
-    AWS_SECRET_ACCESS_KEY = os.getenv('AWS_SECRET_ACCESS_KEY')
-    AWS_REGION = os.getenv('AWS_REGION')
-
-    # Initialize S3 client with credentials
-    s3_client = boto3.client('s3', 
-                             aws_access_key_id=AWS_ACCESS_KEY_ID, 
-                             aws_secret_access_key=AWS_SECRET_ACCESS_KEY, 
-                             region_name=AWS_REGION)
-
+    # Load the data from GitHub
     df = load_data_from_github(github_url)
+
+    # Preprocess the data (drop rows with missing Poster URLs)
     df = preprocess_data(df)
     
-    # Filter rows where images cannot be downloaded
-    df = filter_rows_with_unavailable_images(df, s3_bucket)
+    # Filter rows where images cannot be downloaded and save available images locally
+    df = filter_rows_with_unavailable_images(df, save_directory)
     
-    save_data(df, 'moviecolorclassification_processed.csv', '/content/drive/MyDrive/MovieColorClassification/data')
+    # Save the processed DataFrame to a CSV file
+    save_data(df, 'moviecolorclassification_processed.csv', data_save_directory)
